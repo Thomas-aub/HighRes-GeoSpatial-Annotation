@@ -1,0 +1,31 @@
+# Configuration for the Geo-Spatial Annotation Pipeline
+
+# File and Directory Paths
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  ground_truth_dir: "data/ground_truth"
+  results_dir: "results"
+
+# Tiling Parameters
+tiling:
+  tile_size: 1024
+  skip_empty_tiles: True
+
+# Model and Inference Settings
+model:
+  path: "assets/sam3.pt"
+  prompts:
+    - "Solid elongated floating on water"
+    - "Thin linear shapes on the sea surface"
+    - "Dark wooden pirogues at sea"
+    - "Dark wooden pirogues beached on sand"
+    - "Rigid boat hulls on water"
+    - "Small elongated objects on water"
+    - "Elongated vessel shapes in water"
+    - "Boat"
+    - "Waves"
+
+# Evaluation Metrics
+evaluation:
+  iou_threshold: 0.5

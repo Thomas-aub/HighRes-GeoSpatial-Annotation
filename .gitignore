@@ -1,0 +1,39 @@
+# Ignore common Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info
+.tox/
+.mypy_cache/
+.pytest_cache/
+.vscode/
+
+# Ignore data files
+*.tif
+*.tif.aux.xml
+*/data/*
+*/results/*
+/results/*
+/data/*
+*/data
+/asset/*
+/asset
+*/asset/*
+*/asset
+*.pt
+
+# Ignore results and runs
+sam/results/
+sam/runs/
+yolo/results/
+
+# Ignore logs
+*.log
+
+# Environment variables
+.env
+.flaskenv
