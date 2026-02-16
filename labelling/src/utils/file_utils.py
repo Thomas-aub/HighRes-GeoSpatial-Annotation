@@ -7,6 +7,10 @@ from rasterio.windows import Window
 from shapely.geometry import Polygon
 from sahi.predict import get_sliced_prediction
 import geopandas as gpd
+from typing import List, Tuple, Optional, Any
+import geopandas as gpd
+from shapely.geometry import Polygon
+
 
 
 
@@ -239,3 +243,133 @@ def yolo_obb_predict(image_file, labels_file, detection_model, tile_size, overla
     del image
     del result
 
+
+
+
+# -------------------------------------------------------------------------
+# Geometry Helper Functions
+# -------------------------------------------------------------------------
+
+def fix_polygon_coords(coords: List) -> List:
+    """
+    Recursively ensures that linear rings in polygon coordinates are closed.
+    
+    Args:
+        coords (List): A list of coordinates (nested lists) from a GeoJSON geometry.
+
+    Returns:
+        List: The corrected coordinates with closed rings.
+    """
+    if not isinstance(coords, list) or len(coords) == 0:
+        return coords
+    
+    # Check if this is a ring (list of points [x, y])
+    # A ring is a list of lists of numbers.
+    if isinstance(coords[0], list) and len(coords[0]) > 0 and isinstance(coords[0][0], (int, float)):
+        # It's a ring. Check closure.
+        first_point = coords[0]
+        last_point = coords[-1]
+        if first_point != last_point:
+            coords.append(first_point)
+        return coords
+    
+    # Recursive step for MultiPolygons or Polygon holes
+    return [fix_polygon_coords(sub_list) for sub_list in coords]
+
+
+def calculate_iou(geom1: Any, geom2: Any) -> float:
+    """
+    Calculates the Intersection over Union (IoU) between two geometries.
+
+    Args:
+        geom1 (shapely.geometry): First geometry.
+        geom2 (shapely.geometry): Second geometry.
+
+    Returns:
+        float: IoU score between 0.0 and 1.0.
+    """
+    if not geom1.is_valid or not geom2.is_valid:
+        return 0.0
+    
+    # Fast envelope check to avoid expensive intersection calc
+    if not geom1.envelope.intersects(geom2.envelope):
+        return 0.0
+    
+    try:
+        intersection = geom1.intersection(geom2).area
+        union = geom1.union(geom2).area
+        return intersection / union if union > 0 else 0.0
+    except Exception:
+        return 0.0
+
+
+
+
+# -------------------------------------------------------------------------
+# Data Loading and Preprocessing
+# -------------------------------------------------------------------------
+
+def load_and_fix_geojson(file_path: str) -> Optional[gpd.GeoDataFrame]:
+    """Loads a GeoJSON file and fixes unclosed rings."""
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            
+        features = data.get('features', [])
+        for feat in features:
+            geom = feat.get('geometry')
+            if geom and 'coordinates' in geom:
+                geom['coordinates'] = fix_polygon_coords(geom['coordinates'])
+            
+        gdf = gpd.GeoDataFrame.from_features(features)
+        
+        # Try to recover CRS from file content if possible
+        if 'crs' in data and isinstance(data['crs'], dict):
+            try:
+                crs_name = data['crs']['properties']['name']
+                gdf.set_crs(crs_name, allow_override=True, inplace=True)
+            except Exception:
+                pass
+                
+        return gdf
+    except Exception as e:
+        print(f"Error loading {file_path}: {e}")
+        return None
+
+
+def align_projections(
+    gdf_truth: gpd.GeoDataFrame, 
+    gdf_pred: gpd.GeoDataFrame, 
+    forced_pred_crs: str = None
+) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """
+    Aligns CRS. If predictions lack a CRS, 'forced_pred_crs' is applied.
+    Ideally, we project Truth (Lat/Lon) to Preds (Meters) for accurate IoU.
+    """
+    # 1. Handle missing Prediction CRS
+    if gdf_pred.crs is None:
+        if forced_pred_crs:
+            print(f"Warning: Prediction file has no CRS. Forcing to '{forced_pred_crs}'.")
+            gdf_pred.set_crs(forced_pred_crs, inplace=True)
+        else:
+            print("CRITICAL WARNING: Prediction file has no CRS and no default provided.")
+            print("Assuming it matches Truth CRS (likely incorrect if mixing Lat/Lon and UTM).")
+            if gdf_truth.crs:
+                gdf_pred.set_crs(gdf_truth.crs, inplace=True)
+
+    # 2. Handle missing Truth CRS
+    if gdf_truth.crs is None:
+        # Assume WGS84 (Lat/Lon) if coordinates look small, otherwise match preds
+        if gdf_truth.geometry[0].centroid.x < 180: 
+            print("Warning: Truth file has no CRS. Assuming EPSG:4326 (Lat/Lon).")
+            gdf_truth.set_crs("EPSG:4326", inplace=True)
+        else:
+            gdf_truth.set_crs(gdf_pred.crs, inplace=True)
+
+    # 3. Reproject Truth to Match Predictions
+    # (Calculating IoU in meters (UTM) is more accurate than degrees)
+    if gdf_truth.crs != gdf_pred.crs:
+        print(f"Reprojecting Truth ({gdf_truth.crs}) to match Predictions ({gdf_pred.crs})...")
+        gdf_truth = gdf_truth.to_crs(gdf_pred.crs)
+        
+    return gdf_truth, gdf_pred

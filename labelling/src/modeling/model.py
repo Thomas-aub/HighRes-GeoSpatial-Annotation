@@ -14,12 +14,13 @@ def run_batch_inference(dir_tiles, output_geojson, prompts, model_path="assets/s
     # 1. Initialize Predictor
     overrides = dict(
         conf=0.25,
-        task="segment",
+        task="OBB",
         mode="predict",
         model=model_path,
         half=True,  # Enable half-precision inference
         save=False,
-        imgsz=1024
+        imgsz=1036,
+        verbose=False,
     )
     predictor = SAM3SemanticPredictor(overrides=overrides)
 
