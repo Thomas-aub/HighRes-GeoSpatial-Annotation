@@ -3,22 +3,63 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
-from tqdm import tqdm 
+from tqdm import tqdm
 import torch
 from transformers import AutoImageProcessor, AutoModel
 import torchvision.transforms as T
+from typing import Literal
 
 # Suppress warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+def get_embeddings_batch(
+    df: pd.DataFrame, 
+    model_name: Literal["SatDINO", "ResNet50"] = "SatDINO",
+    batch_size: int = 32
+) -> pd.DataFrame:
+    """
+    Computes embeddings for all chips in the dataframe using the specified model.
 
+    This function acts as a dispatcher, calling the appropriate embedding function
+    (`SatDINO` or `ResNet50`) based on the `model_name` parameter. It processes
+    images in batches and adds the resulting feature vectors to the DataFrame.
 
-def get_embeddings_batch_SatDINO(df, batch_size=32):
+    Args:
+        df: DataFrame containing chip metadata, including the 'chip_path' for each image.
+        model_name: The model to use for embedding. Either "SatDINO" or "ResNet50".
+        batch_size: The number of images to process in a single batch.
+
+    Returns:
+        The input DataFrame updated with an 'img_feature' column containing
+        the computed embeddings. Rows where embedding failed are dropped.
+    """
+    if model_name == "SatDINO":
+        return get_embeddings_batch_SatDINO(df, batch_size)
+    elif model_name == "ResNet50":
+        return get_embeddings_batch_ResNet50(df, batch_size)
+    else:
+        raise ValueError(f"Unknown model_name: {model_name}")
+
+def get_embeddings_batch_SatDINO(df: pd.DataFrame, batch_size: int = 32) -> pd.DataFrame:
+    """
+    Computes embeddings using the SatDINO ViT-Base-16 model.
+
+    Handles image preprocessing, normalization, and batch inference. It is
+    specifically tuned for satellite imagery.
+
+    Args:
+        df: DataFrame containing chip metadata. Must include the 'chip_path' column.
+        batch_size: Number of images to process per batch.
+
+    Returns:
+        DataFrame with an added 'img_feature' column for embeddings.
+    """
     print("--- Initializing SatDINO (ViT-Base-16) ---")
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_name = "strakajk/satdino-vit_base-16"
 
+    # Temporary patch for a potential issue with torch.linspace in some environments
     _orig_linspace = torch.linspace
     def _safe_linspace(*args, **kwargs):
         kwargs["device"] = "cpu"
@@ -33,10 +74,11 @@ def get_embeddings_batch_SatDINO(df, batch_size=32):
             device_map=None,
         ).to(device)
     finally:
-        torch.linspace = _orig_linspace
+        torch.linspace = _orig_linspace  # Restore original function
 
     model.eval()
 
+    # Preprocessing pipeline for SatDINO
     preprocess = T.Compose([
         T.ToPILImage(),
         T.Resize((224, 224)),
@@ -59,16 +101,13 @@ def get_embeddings_batch_SatDINO(df, batch_size=32):
             try:
                 img = np.load(row['chip_path'])
                 
-                # Handle channel-first format (C, H, W) → (H, W, C)
+                # Handle different channel orders and data types
                 if img.ndim == 3 and img.shape[0] in (1, 3, 4):
                     img = np.transpose(img, (1, 2, 0))
                 
-                # Keep only RGB channels
                 if img.shape[-1] > 3:
                     img = img[..., :3]
                 
-                # Convert uint16 (satellite imagery) to uint8
-                # Percentile stretch preserves contrast better than simple /256
                 if img.dtype == np.uint16:
                     p2, p98 = np.percentile(img, (2, 98))
                     img = np.clip(img, p2, p98)
@@ -86,6 +125,7 @@ def get_embeddings_batch_SatDINO(df, batch_size=32):
             input_batch = torch.stack(batch_tensors).to(device)
             with torch.no_grad():
                 outputs = model(input_batch)
+                # Extract the CLS token embedding
                 if hasattr(outputs, 'last_hidden_state'):
                     hidden = outputs.last_hidden_state
                     embeddings = (hidden[:, 0, :] if hidden.dim() == 3 else hidden).cpu().numpy()
@@ -100,21 +140,27 @@ def get_embeddings_batch_SatDINO(df, batch_size=32):
     pbar.close()
     return df.dropna(subset=['img_feature'])
 
-def get_embeddings_batch_ResNet50(df, batch_size=64):
+def get_embeddings_batch_ResNet50(df: pd.DataFrame, batch_size: int = 64) -> pd.DataFrame:
     """
-    Computes ResNet50 embeddings for all chips in the dataframe with a progress bar.
+    Computes embeddings using the ResNet50 model from Keras.
+
+    Good general-purpose model, pre-trained on ImageNet.
+
+    Args:
+        df: DataFrame containing chip metadata. Must include the 'chip_path' column.
+        batch_size: Number of images to process per batch.
+
+    Returns:
+        DataFrame with an added 'img_feature' column for embeddings.
     """
-    
     print("--- Initializing ResNet50 ---")
     model = ResNet50(weights='imagenet', include_top=False, pooling='avg')
     
-    # Initialize the feature column
     df['img_feature'] = None
     df['img_feature'] = df['img_feature'].astype(object)
     
     total_samples = len(df)
-
-    pbar = tqdm(total=total_samples, desc="Generating Embeddings", unit="img")
+    pbar = tqdm(total=total_samples, desc="Generating ResNet50 Embeddings", unit="img")
 
     for i in range(0, total_samples, batch_size):
         batch_df = df.iloc[i:i+batch_size]
@@ -123,6 +169,8 @@ def get_embeddings_batch_ResNet50(df, batch_size=64):
         for idx, row in batch_df.iterrows():
             try:
                 img = np.load(row['chip_path'])
+                
+                # Preprocessing for ResNet50
                 if img.shape[-1] > 3: 
                     img = img[..., :3]
                 if img.dtype != np.uint8:
@@ -138,20 +186,15 @@ def get_embeddings_batch_ResNet50(df, batch_size=64):
                 continue
             
         if imgs:
-            # Predict
             preds = model.predict(np.array(imgs), verbose=0)
             
-            # Storage
             for j, real_idx in enumerate(indices):
                 df.at[real_idx, 'img_feature'] = preds[j]
         
-   
         pbar.update(len(imgs))
         
     pbar.close() 
     return df.dropna(subset=['img_feature'])
-
-
 
 if __name__ == "__main__":
     CACHE_FILE = "../data/extracted/metadata_cache.csv"
@@ -164,7 +207,8 @@ if __name__ == "__main__":
         # Fix paths: CSV stores paths relative to project root, but we run from src/
         df['chip_path'] = df['chip_path'].str.replace('^\./', '../', regex=True)
         
-        df_emb = get_embeddings_batch_SatDINO(df)
+        # You can choose the model here: "SatDINO" or "ResNet50"
+        df_emb = get_embeddings_batch(df, model_name="SatDINO")
         
         # Save results
         df_emb.to_pickle(OUTPUT_FILE)
