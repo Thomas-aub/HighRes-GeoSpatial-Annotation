@@ -25,6 +25,8 @@ venv/
 */asset/*
 */asset
 *.pt
+*.npy
+*.geojson
 
 # Ignore results and runs
 sam/results/
