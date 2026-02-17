@@ -8,9 +8,21 @@ def compute_and_save_tsne(csv_path, pca_path, png_path):
     """
     Computes t-SNE from PCA data and updates the results CSV with coordinates.
     """
+    
+    
     print("Loading data for t-SNE...")
     df = pd.read_csv(csv_path)
     X_pca = np.load(pca_path)
+    
+
+    # Guard: catch stale file mismatches immediately with a clear message
+    if len(df) != X_pca.shape[0]:
+        raise ValueError(
+            f"Row count mismatch: CSV has {len(df)} rows but X_pca has "
+            f"{X_pca.shape[0]} rows. Re-run Step 2 (clustering) to regenerate "
+            f"both files in the same run before computing t-SNE."
+        )
+    
     
     # Ajout de jitter pour éviter les doublons exacts
     X_pca += np.random.normal(0, 1e-5, X_pca.shape)
@@ -37,7 +49,7 @@ def compute_and_save_tsne(csv_path, pca_path, png_path):
 if __name__ == "__main__":
     CSV_FILE = "../results/clustering_results.csv"
     PCA_FILE = "../results/X_pca.npy"
-    PNG_PATH = "../resultstsne_static.png"
+    PNG_PATH = "../results/tsne_static.png"
 
     
     if os.path.exists(CSV_FILE) and os.path.exists(PCA_FILE):
