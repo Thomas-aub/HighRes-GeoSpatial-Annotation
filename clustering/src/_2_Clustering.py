@@ -30,7 +30,7 @@ def run_clustering(
     """
     # 1. Prepare features by combining image embeddings and metadata
     img_feats = np.stack(df['img_feature'].values)
-    meta_feats = df[['lat', 'lon', 'orig_width', 'orig_height']].values
+    meta_feats = df[[ 'original width', 'original height']].values # 'lat', 'lon',
     X_combined = np.hstack([img_feats, meta_feats])
     
     # 2. Standardize the combined feature set

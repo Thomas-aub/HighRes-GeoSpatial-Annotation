@@ -197,7 +197,7 @@ def get_embeddings_batch_ResNet50(df: pd.DataFrame, batch_size: int = 64) -> pd.
     return df.dropna(subset=['img_feature'])
 
 if __name__ == "__main__":
-    CACHE_FILE = "../data/extracted/metadata_cache.csv"
+    CACHE_FILE = "../data/extracted/meta_data.csv"
     OUTPUT_FILE = "../data/extracted/embeddings.pkl"
     
     if os.path.exists(CACHE_FILE):

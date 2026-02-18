@@ -173,7 +173,7 @@ class UltimateInteractivePlot:
             ax_chip.imshow(img_display)
             ax_chip.set_title(
                 f"Chip: {os.path.basename(row['chip_path'])}\n"
-                f"Cluster: {row['cluster']} | Size: {row['orig_width']:.1f}x{row['orig_height']:.1f}m"
+                f"Cluster: {row['cluster']} | Size: {row['original width']:.1f}x{row['original height']:.1f}m"
             )
             ax_chip.axis('off')
             # Position the chip window
