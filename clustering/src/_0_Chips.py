@@ -12,44 +12,43 @@ def process_single_pair(
     geojson_path: str, 
     output_dir: str, 
     chip_size_px: tuple[int, int],
-    existing_ids: set,
-    fixed_buffer_meters: float = 100.0  
+    existing_ids: set
 ) -> list[dict]:
     """
-    Extracts image chips using a fixed geographic window to preserve scale.
+    Extracts image chips from a .tif file based on geometries in a .geojson.
 
-    Instead of resizing based on the boat's bounding box, this captures a 
-    fixed area (e.g., 100m x 100m) around the object center. This ensures 
-    that larger objects occupy more pixels than smaller objects.
+    For each feature, it computes a square bounding box, extracts the corresponding
+    image data, resizes it, and saves it as a .npy file. It also compiles
+    metadata for each chip.
 
     Args:
         tif_path: Path to the input GeoTIFF file.
         geojson_path: Path to the input GeoJSON file with polygons.
         output_dir: Directory to save the output .npy chips.
         chip_size_px: A tuple (width, height) for the output chip dimensions.
-        fixed_buffer_meters: The physical size (in meters) of the square crop.
 
     Returns:
-        A list of dictionaries containing metadata for each chip.
+        A list of dictionaries, where each dictionary contains metadata
+        for a single created chip.
     """
     metadata = []
     gdf = gpd.read_file(geojson_path)
-    base_name = os.path.basename(tif_path)
+    base_name = os.path.basename(tif_path) # e.g., "image1.tif"
     base_no_ext = os.path.splitext(base_name)[0]
     
     if 'class_id' in gdf.columns:
         gdf = gdf[gdf['class_id'].isin([0, 2])]
+
+    gdf_wgs84 = gdf.to_crs("EPSG:4326")
     
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
 
     with rasterio.open(tif_path) as src:
         if gdf.crs != src.crs:
             gdf = gdf.to_crs(src.crs)
-
-        gdf_wgs84 = gdf.to_crs("EPSG:4326")
         
-        # Get pixel resolution to calculate metadata
-        pixel_resolution = src.res[0] 
+        # Get pixel resolution to calculate scale factors
+        pixel_resolution = src.res[0] # Assuming square pixels
 
         for idx, row in gdf.iterrows():
             chip_filename = f"{base_no_ext}_{idx}.npy"
@@ -58,24 +57,25 @@ def process_single_pair(
             if chip_id in existing_ids:
                 continue
 
-            # Get geometry bounds for metadata only
             minx, miny, maxx, maxy = row.geometry.bounds
             width_geo = maxx - minx
             height_geo = maxy - miny
+            side_length_geo = max(width_geo, height_geo)
             
-            # --- FIXED SCALE CALCULATION ---
-            # We use fixed_buffer_meters instead of side_length_geo
+            # --- SCALE CALCULATION ---
+            # Original size in pixels before resizing to chip_size_px
+            orig_size_px = side_length_geo / pixel_resolution
+            # Scale factor: how much the image was stretched or shrunk
+            # e.g., if orig is 112px and target is 224px, scale is 2.0
+            scale_factor = chip_size_px[0] / orig_size_px if orig_size_px > 0 else 0
+
             center_x = (minx + maxx) / 2
             center_y = (miny + maxy) / 2
             
-            sq_minx = center_x - (fixed_buffer_meters / 2)
-            sq_maxx = center_x + (fixed_buffer_meters / 2)
-            sq_miny = center_y - (fixed_buffer_meters / 2)
-            sq_maxy = center_y + (fixed_buffer_meters / 2)
-            
-            # The scale factor is now constant for the whole dataset
-            orig_size_px = fixed_buffer_meters / pixel_resolution
-            scale_factor = chip_size_px[0] / orig_size_px if orig_size_px > 0 else 0
+            sq_minx = center_x - (side_length_geo / 2)
+            sq_maxx = center_x + (side_length_geo / 2)
+            sq_miny = center_y - (side_length_geo / 2)
+            sq_maxy = center_y + (side_length_geo / 2)
             
             window = from_bounds(sq_minx, sq_miny, sq_maxx, sq_maxy, src.transform)
             
@@ -110,11 +110,8 @@ def process_single_pair(
 if __name__ == "__main__":
     INPUT_DIR = "../data/raw"
     OUTPUT_DIR = "../data/extracted/"
+    # Updated filename as requested
     METADATA_FILE = os.path.join(OUTPUT_DIR, "meta_data.csv")
-    
-    # Define how large the "world view" should be for each chip
-    # For boats, 150m-200m is usually enough to fit most vessels.
-    FIXED_WINDOW_METERS = 150.0 
     
     if not os.path.exists(OUTPUT_DIR): os.makedirs(OUTPUT_DIR)
 
@@ -132,10 +129,7 @@ if __name__ == "__main__":
         g = t.replace(".tif", ".geojson")
         if os.path.exists(g):
             print(f"Processing {t}...")
-            new_meta.extend(process_single_pair(
-                t, g, OUTPUT_DIR, (224, 224), existing_ids, 
-                fixed_buffer_meters=FIXED_WINDOW_METERS
-            ))
+            new_meta.extend(process_single_pair(t, g, OUTPUT_DIR, (224, 224), existing_ids))
 
     if new_meta:
         combined_meta = existing_meta + new_meta
@@ -143,3 +137,6 @@ if __name__ == "__main__":
         print(f"Done. Saved to {METADATA_FILE}")
     else:
         print("No new chips to add.")
+
+
+
