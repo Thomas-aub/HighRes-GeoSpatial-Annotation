@@ -59,7 +59,7 @@ if __name__ == "__main__":
         df = pd.read_pickle(PKL_FILE)
         
         # Run clustering (you can adjust n_clusters here)
-        df_res, X_reduced = run_clustering(df, n_clusters=10)
+        df_res, X_reduced = run_clustering(df, n_clusters=2)
         
         # Ensure results directory exists
         os.makedirs("../results", exist_ok=True)
