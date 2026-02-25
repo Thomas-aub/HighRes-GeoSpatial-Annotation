@@ -30,12 +30,12 @@ PROCESSED_DIR = "data/processed"
 
 # Update these names to match your dataset.yaml
 CLASS_NAMES = {
-    0: "boat_small",
-    1: "boat_medium",
-    2: "boat_large",
-    3: "boat_sailing",
-    4: "boat_motorboat",
-    5: "boat_other",
+    0: "pirogue",
+    1: "Double hulled",
+    2: "Small Motorboat",
+    3: "Medium Motorboat",
+    4: "Large Motorboat",
+    5: "Sailing Boat",
 }
 
 SPLITS = ["train", "val", "test"]

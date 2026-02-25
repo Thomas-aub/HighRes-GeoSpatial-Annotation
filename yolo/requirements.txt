@@ -1,16 +1,23 @@
-plotly
-kaleido
-rasterio
-shapely
-affine
-Pillow
+# Core Geospatial & Image Processing
 numpy
-hydronaut
+pillow
+rasterio
+pyproj
+affine
+shapely
+opencv-python
+matplotlib
+
+# YOLO & Deep Learning
+ultralytics
+pyyaml
+
+# Optimization & Experiment Tracking (Script 06)
+mlflow
+optuna
 optuna-dashboard
+hydronaut
 omegaconf
+plotly
 hydra-core
 hydra-optuna-sweeper
-optuna>=3.5
-mlflow>=2.9
-sqlalchemy<2.0
-alembic<2.0

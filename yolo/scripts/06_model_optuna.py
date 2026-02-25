@@ -84,25 +84,25 @@ MLFLOW_URI      = "sqlite:///runs/mlflow.db"     # local MLflow tracking store
 MODEL_WEIGHTS   = "yolo26m-obb.pt"  # n / s / m / l / x
 
 # --- Dataset -----------------------------------------------------------------
-IMGSZ           = 1024
+IMGSZ           = 1536
 WORKERS         = 4
 BATCH_SIZE      = 4
 DEVICE          = 0                 # GPU id | "cpu" | "0,1"
 
 # --- Cross-validation (Optimized for ~10h Runtime) ---------------------------
-N_FOLDS         = 2                 # Reduced from 3 to save time
+N_FOLDS         = 3                 # Reduced from 3 to save time
 CV_SEED         = 42
 
 # --- Optuna study ------------------------------------------------------------
 STUDY_NAME      = "boat_obb_study"
-N_TRIALS        = 25                # Reduced from 50 to fit budget
+N_TRIALS        = 50                # Reduced from 50 to fit budget
 RESUME_STUDY    = True              # True = continue from existing SQLite DB
 N_STARTUP_TRIALS= 8                 # Random exploration before TPE activates
 N_WARMUP_STEPS  = 5                 # Epochs before MedianPruner can act
 
 # --- Training budgets --------------------------------------------------------
-SEARCH_EPOCHS   = 20                # Epochs per fold during the HPO search
-PATIENCE        = 10                # YOLO early-stopping (no-improvement epochs)
+SEARCH_EPOCHS   = 50                # Epochs per fold during the HPO search
+PATIENCE        = 30                # YOLO early-stopping (no-improvement epochs)
 FINAL_EPOCHS    = 150               # Epochs for the post-search full retrain
 FINAL_PATIENCE  = 30
 
@@ -477,28 +477,41 @@ def final_retrain(best_params: Dict, mlflow_experiment_id: str):
         )
 
         best_ckpt = STUDY_DIR / "final_retrain" / "weights" / "best.pt"
-        if best_ckpt.exists():
-            mlflow.log_artifact(str(best_ckpt), artifact_path="weights")
-            
+
+        if not best_ckpt.exists():
+            raise FileNotFoundError(
+                f"Best checkpoint not found at {best_ckpt}. "
+                "Final training may have failed."
+            )
+
+        mlflow.log_artifact(str(best_ckpt), artifact_path="weights")
+
         # --- AUTO-EXTRACT BEST CONFIDENCE THRESHOLD ---
         print("\n  Calculating optimal confidence threshold on Validation set...")
-        val_model = YOLO(str(best_ckpt))
-        val_metrics = val_model.val(data=BASE_YAML, split="val", plots=False, verbose=False)
-        
-        # Extract dynamic curve to find the exact threshold where F1 peaks
-        f1_curve = val_metrics.box.f1_curve.mean(axis=0)
-        conf_thresholds = np.linspace(0, 1, 1000)
-        best_f1_idx = np.argmax(f1_curve)
-        best_conf = float(conf_thresholds[best_f1_idx])
-        
-        print(f"\n  ✅ Best Model mAP50 : {val_metrics.box.map50:.4f}")
-        print(f"  ✅ Optimal Conf   : {best_conf:.3f} (Max F1)")
 
-        # Save to JSON for downstream scripts (like inference/test phase)
+        val_model = YOLO(str(best_ckpt))
+        val_metrics = val_model.val(
+            data=BASE_YAML,
+            split="val",
+            plots=False,
+            verbose=False
+        )
+
+        # Use Ultralytics internal confidence thresholds
+        f1_curve = val_metrics.box.f1_curve.mean(axis=0)
+        conf_thresholds = val_metrics.box.conf
+
+        best_f1_idx = int(np.argmax(f1_curve))
+        best_conf = float(conf_thresholds[best_f1_idx])
+
+        print(f"\n  ✅ Best Model mAP50 : {val_metrics.box.map50:.4f}")
+        print(f"  ✅ Optimal Conf     : {best_conf:.3f} (Max F1)")
+
+        # Save to JSON
         conf_path = STUDY_DIR / "optimal_conf.json"
         with open(conf_path, "w") as f:
             json.dump({"optimal_conf": best_conf}, f, indent=2)
-            
+
         mlflow.log_artifact(str(conf_path), artifact_path="thresholds")
         mlflow.log_metric("optimal_val_conf", best_conf)
 
