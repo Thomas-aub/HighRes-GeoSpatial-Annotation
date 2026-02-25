@@ -1,0 +1,103 @@
+# conf/config.yaml
+# -----------------
+# Hydronaut configuration for the YOLO26-OBB boat detection HPO.
+#
+# This file configures Hydronaut (= Hydra + MLflow) when the experiment is
+# launched via the `hydronaut-run` CLI command instead of running
+# `python scripts/06_model_optuna.py` directly.
+#
+# Usage (from the project root):
+#   Single run  : hydronaut-run
+#   Optuna sweep: hydronaut-run --multirun
+#
+# The `hydronaut-run` path is an *alternative* to running the Python script
+# directly. Both produce the same results; the CLI is useful for running
+# sweeps from shell scripts or CI pipelines.
+#
+# Note: because Python module names cannot start with a digit, the
+# exp_class below references the experiment class via an absolute import
+# path injected through experiment.python.paths.
+
+defaults:
+  - _self_
+
+# ---------------------------------------------------------------------------
+# Hydra overrides
+# ---------------------------------------------------------------------------
+hydra:
+  # Suppress Hydra's own output directory creation — we manage our own
+  run:
+    dir: runs/hydra/${now:%Y-%m-%d_%H-%M-%S}
+
+  sweeper:
+    _target_: hydra_plugins.hydra_optuna_sweeper.optuna_sweeper.OptunaSweeper
+
+    sampler:
+      _target_: optuna.samplers.TPESampler
+      seed: 42
+      multivariate: true
+      group: true
+      n_startup_trials: 8     # Reduced to 8 for faster convergence
+
+    direction: maximize       # maximise mAP50
+    storage: "sqlite:///${url_quote:${cwd:}}/runs/optuna/boat_obb_study/optuna_study.db"
+    study_name: boat_obb_study
+    n_trials: 25              # Reduced to 25 to fit within a 12-hour window
+    n_jobs: 1                 # set > 1 only with a shared DB and multiple GPUs
+
+    params:
+      # THE "BIG 5"
+      # YOLO auto-tunes the optimizer (lr0, momentum, etc.), so we only sweep 
+      # the crucial loss weights and geometric augmentations for OBB tasks.
+      experiment.params.weight_decay:    "interval(1e-5, 5e-4)"
+      experiment.params.scale:           "interval(0.2, 0.8)"
+      experiment.params.box:             "interval(5.0, 10.0)"
+      experiment.params.cls:             "interval(0.3, 1.5)"
+      experiment.params.dfl:             "interval(1.0, 3.0)"
+
+# ---------------------------------------------------------------------------
+# Hydronaut experiment definition
+# ---------------------------------------------------------------------------
+experiment:
+  name: boat_obb_study
+  description: >
+    Hyperparameter optimisation for YOLO26-OBB boat detection on
+    high-resolution satellite imagery. Uses k-fold cross-validation
+    with stratified class sampling.
+
+  # Module path:  scripts/ is added to sys.path below so that
+  # `06_model_optuna` can be imported as a regular module.
+  exp_class: 06_model_optuna:BoatOBBExperiment
+
+  python:
+    # Makes the scripts/ directory importable so Hydronaut can load exp_class.
+    paths:
+      - scripts
+
+  mlflow:
+    start_run:
+      tags:
+        project:   boat_detection
+        framework: YOLO26-OBB
+        mode:      hpo
+
+  # Fixed params (not swept by Optuna — infrastructure settings)
+  params:
+    # Optimizer settings ignored by Optuna (Ultralytics handles them via 'auto')
+    # Geometric defaults (Fixed for satellite imagery)
+    degrees:          180.0
+    mosaic:           1.0
+    mixup:            0.0
+    fliplr:           0.5
+    flipud:           0.5
+    hsv_h:            0.015
+    hsv_s:            0.7
+    hsv_v:            0.4
+    translate:        0.1
+    shear:            0.0
+    
+    # Infrastructure (not swept, filled at runtime)
+    fold_yaml:        ""           
+    run_dir:          "runs/optuna/boat_obb_study/cv_runs"
+    trial_number:     0            
+    fold_index:       0

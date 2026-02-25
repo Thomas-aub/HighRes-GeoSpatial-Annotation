@@ -1,0 +1,16 @@
+plotly
+kaleido
+rasterio
+shapely
+affine
+Pillow
+numpy
+hydronaut
+optuna-dashboard
+omegaconf
+hydra-core
+hydra-optuna-sweeper
+optuna>=3.5
+mlflow>=2.9
+sqlalchemy<2.0
+alembic<2.0

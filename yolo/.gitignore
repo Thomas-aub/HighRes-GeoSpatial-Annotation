@@ -1,0 +1,70 @@
+
+# ==============================================================================
+# 1. DATASETS & RAW IMAGES
+# ==============================================================================
+# Ignore all heavy satellite images and generated tiles
+data/raw/*.tif
+data/raw/*.geojson
+data/processed/images/
+data/processed/labels/
+data/processed/archive/
+data/processed/metadata.csv
+data/processed/*.png
+
+# YOLO label cache files (generated automatically during training)
+*.cache
+
+# (Optional) If you want to keep the empty folder structure in Git, uncomment these:
+# !data/raw/.gitkeep
+# !data/processed/.gitkeep
+
+# ==============================================================================
+# 2. MODEL WEIGHTS
+# ==============================================================================
+# Ignore all downloaded and trained YOLO weights
+*.pt
+*.engine
+*.onnx
+
+# ==============================================================================
+# 3. TRAINING RUNS, MLFLOW & OPTUNA
+# ==============================================================================
+# Ignore the entire runs folder (contains YOLO runs, Optuna DBs, and Hydra outputs)
+runs/
+mlruns/
+
+# Ignore SQLite databases (used by MLflow and Optuna)
+*.db
+*.sqlite
+
+# Ignore any random result CSVs or plots dumped in the root
+results.csv
+*.png
+*.jpg
+*.jpeg
+
+# ==============================================================================
+# 4. PYTHON & ENVIRONMENT
+# ==============================================================================
+# Standard Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments (just in case you ever create one locally)
+venv/
+env/
+.venv/
+sam3_env/
+miniconda3/
+
+# ==============================================================================
+# 5. JUPYTER NOTEBOOKS
+# ==============================================================================
+.ipynb_checkpoints/
+
+# ==============================================================================
+# 6. OS & SYSTEM FILES
+# ==============================================================================
+.DS_Store
+Thumbs.db
