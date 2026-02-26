@@ -81,7 +81,7 @@ OUTPUT_DIR      = Path("runs/optuna")
 MLFLOW_URI      = "sqlite:///runs/mlflow.db"     # local MLflow tracking store 
 
 # --- Model -------------------------------------------------------------------
-MODEL_WEIGHTS   = "yolo26m-obb.pt"  # n / s / m / l / x
+MODEL_WEIGHTS   = "weights/yolo26m-obb.pt"  # n / s / m / l / x
 
 # --- Dataset -----------------------------------------------------------------
 IMGSZ           = 1536
