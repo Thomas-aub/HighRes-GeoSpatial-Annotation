@@ -45,8 +45,8 @@ RAW_DIR    = "data/raw"        # folder that contains the .tif source images
 OUTPUT_DIR = "data/processed"  # root processed folder
 SPLIT      = "train"           # "train" | "val" | "test"
 
-TILE_SIZE  = 1024              # tile width and height in pixels 
-OVERLAP    = 64                 # pixel overlap between adjacent tiles (0 = no overlap)
+TILE_SIZE  = 768              # tile width and height in pixels 
+OVERLAP    = 384                 # pixel overlap between adjacent tiles (0 = no overlap)
 
 # 1-based band indices to select for R, G, B.
 # Set to None to auto-detect:  >= 3 bands -> first 3 bands;  1 band (PAN) -> replicated to RGB

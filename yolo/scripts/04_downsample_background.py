@@ -21,7 +21,7 @@ from pathlib import Path
 # =============================================================================
 
 PROCESSED_DIR   = "data/processed"
-BACKGROUND_RATIO = 0.10     # 10% of the final split will be background images
+BACKGROUND_RATIO = 0.10     # % of the final split will be background images
 RANDOM_SEED     = 42        # For reproducible downsampling
 
 # =============================================================================

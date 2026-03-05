@@ -25,6 +25,7 @@ annotations (empty file = background tile, required by YOLO).
 
 import csv
 import json
+import math
 from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -42,10 +43,15 @@ METADATA_PATH = "data/processed/metadata.csv"  # CSV produced by script 01
 RAW_DIR       = "data/raw"                      # folder containing the .geojson files
 OUTPUT_DIR    = "data/processed"                # root processed folder
 
-TILE_SIZE     = 1024    # padded tile size used in script 01 (pixels)
+TILE_SIZE     = 768    # padded tile size used in script 01 (pixels)
 
 # Minimum fraction of an OBB area that must fall inside a tile to keep it.
-MIN_VISIBLE   = 0.15
+MIN_VISIBLE   = 0.25
+
+# Minimum side length (in pixels) for any OBB side before normalization.
+# If either axis of the OBB is shorter than this value, it is symmetrically
+# elongated from the box center until it reaches MIN_SIZE_BORDER pixels.
+MIN_SIZE_BORDER = 1.0
 
 # Class remapping: {geojson_class_id: yolo_class_id}
 CLASS_MAP   = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 4}
@@ -98,6 +104,61 @@ def obb_corners_geo(feature: dict) -> Optional[List[Tuple[float, float]]]:
         return [(p[0], p[1]) for p in pts]
     except Exception:
         return None
+
+
+def enforce_min_side_length(
+    corners_px: List[Tuple[float, float]],
+    min_size: float,
+) -> List[Tuple[float, float]]:
+    """
+    Ensure both axes of an OBB (defined by 4 pixel-space corners) meet a
+    minimum side length.  If either axis is shorter than ``min_size`` pixels,
+    that axis is symmetrically elongated from the box center until it reaches
+    ``min_size``.
+
+    The OBB is assumed to have corners ordered so that consecutive vertices
+    form the sides (i.e. side-0 = p0→p1, side-1 = p1→p2, and the two pairs
+    of opposite sides have equal length).
+
+    Args:
+        corners_px: List of 4 (x, y) tuples in pixel coordinates.
+        min_size:   Minimum allowed length for any OBB side (pixels).
+
+    Returns:
+        List of 4 (x, y) tuples, potentially adjusted.
+    """
+    p0, p1, p2, p3 = corners_px
+
+    # Axis vectors (not yet unit vectors)
+    ax = (p1[0] - p0[0], p1[1] - p0[1])   # along side p0→p1
+    bx = (p3[0] - p0[0], p3[1] - p0[1])   # along side p0→p3
+
+    len_a = math.hypot(*ax)
+    len_b = math.hypot(*bx)
+
+    # Unit vectors (guard against degenerate zero-length sides)
+    ua = (ax[0] / len_a, ax[1] / len_a) if len_a > 0 else (1.0, 0.0)
+    ub = (bx[0] / len_b, bx[1] / len_b) if len_b > 0 else (0.0, 1.0)
+
+    # Center of the box
+    cx = (p0[0] + p1[0] + p2[0] + p3[0]) / 4.0
+    cy = (p0[1] + p1[1] + p2[1] + p3[1]) / 4.0
+
+    # Enforce minimum lengths (half-lengths used for symmetric expansion)
+    half_a = max(len_a / 2.0, min_size / 2.0)
+    half_b = max(len_b / 2.0, min_size / 2.0)
+
+    # Reconstruct corners from center + adjusted half-axes
+    new_p0 = (cx - ua[0] * half_a - ub[0] * half_b,
+              cy - ua[1] * half_a - ub[1] * half_b)
+    new_p1 = (cx + ua[0] * half_a - ub[0] * half_b,
+              cy + ua[1] * half_a - ub[1] * half_b)
+    new_p2 = (cx + ua[0] * half_a + ub[0] * half_b,
+              cy + ua[1] * half_a + ub[1] * half_b)
+    new_p3 = (cx - ua[0] * half_a + ub[0] * half_b,
+              cy - ua[1] * half_a + ub[1] * half_b)
+
+    return [new_p0, new_p1, new_p2, new_p3]
 
 
 def normalize_corners(
@@ -245,6 +306,9 @@ def main():
 
                 # Convert native map coords -> pixel coords relative to this tile's origin
                 corners_px = [inv_transform * (x, y) for x, y in corners_proj]
+
+                # Enforce minimum OBB side length before normalization
+                corners_px = enforce_min_side_length(corners_px, MIN_SIZE_BORDER)
 
                 norm_corners = normalize_corners(corners_px, TILE_SIZE)
 

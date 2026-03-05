@@ -20,7 +20,7 @@ from collections import defaultdict
 # CONFIGURATION
 # =============================================================================
 
-PROCESSED_DIR = "data/processed"
+PROCESSED_DIR = "/home/thomas/Documents/thomas/test/yolo_3/data/processed/"
 SPLITS = ["train", "val", "test"]
 PIROGUE_CLASS_ID = 0
 TILE_SIZE = 1024

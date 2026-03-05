@@ -32,7 +32,7 @@ def summarize_class_ids(folder_path):
 
 
 if __name__ == "__main__":
-    folder = "data/raw"  # Change if needed
+    folder = "/home/thomas/Documents/thomas/data_center/pleaides_boat_annotation/"  # Change if needed
     summary = summarize_class_ids(folder)
 
     print("=== Class ID Summary Across All GeoJSON Files ===")
